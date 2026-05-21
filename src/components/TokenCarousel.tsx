@@ -9,6 +9,23 @@ interface TokenCarouselProps {
   onSelect: (index: number) => void;
 }
 
+function TokenIcon({ icon }: { icon: string }) {
+  if (icon.startsWith("http")) {
+    return (
+      <img
+        src={icon}
+        alt=""
+        className="w-8 h-8 rounded-full object-cover"
+        onError={(e) => {
+          (e.target as HTMLImageElement).style.display = "none";
+          (e.target as HTMLImageElement).nextElementSibling?.classList.remove("hidden");
+        }}
+      />
+    );
+  }
+  return <span className="text-2xl">{icon}</span>;
+}
+
 export function TokenCarousel({ tokens, activeIndex, onSelect }: TokenCarouselProps) {
   return (
     <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
@@ -23,7 +40,8 @@ export function TokenCarousel({ tokens, activeIndex, onSelect }: TokenCarouselPr
           }`}
         >
           <div className="relative">
-            <span className="text-2xl">{trade.token.icon}</span>
+            <TokenIcon icon={trade.token.icon} />
+            <span className="hidden text-2xl">🪙</span>
             <span className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-accent text-background text-[10px] font-bold flex items-center justify-center">
               {i + 1}
             </span>
