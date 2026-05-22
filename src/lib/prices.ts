@@ -9,22 +9,6 @@ interface JupiterPriceResponse {
   >;
 }
 
-interface DexScreenerToken {
-  pairs: {
-    baseToken: {
-      address: string;
-      name: string;
-      symbol: string;
-    };
-    priceUsd: string;
-    fdv: number;
-    marketCap: number;
-    info?: {
-      imageUrl?: string;
-    };
-  }[];
-}
-
 export async function getTokenPrices(
   mints: string[]
 ): Promise<Record<string, number>> {
@@ -75,36 +59,132 @@ export async function getSOLPrice(): Promise<number> {
   return 170;
 }
 
-export async function getTokenMetadata(
-  mints: string[]
-): Promise<Record<string, { name: string; symbol: string; icon: string }>> {
-  const metadata: Record<
-    string,
-    { name: string; symbol: string; icon: string }
-  > = {};
+interface HeliusAsset {
+  id: string;
+  content?: {
+    metadata?: {
+      name?: string;
+      symbol?: string;
+    };
+    links?: {
+      image?: string;
+    };
+    files?: { uri?: string; cdn_uri?: string }[];
+  };
+}
 
-  for (const mint of mints.slice(0, 20)) {
+async function getHeliusMetadata(
+  mints: string[],
+  apiKey: string
+): Promise<Record<string, { name: string; symbol: string; icon: string }>> {
+  const metadata: Record<string, { name: string; symbol: string; icon: string }> = {};
+
+  const batchSize = 100;
+  for (let i = 0; i < mints.length; i += batchSize) {
+    const batch = mints.slice(i, i + batchSize);
     try {
-      const res = await fetch(
-        `https://api.dexscreener.com/tokens/v1/solana/${mint}`,
-        { next: { revalidate: 3600 } }
-      );
+      const res = await fetch(`https://api.helius.xyz/v0/tokens/metadata?api-key=${apiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mintAccounts: batch, includeOffChain: true }),
+      });
 
       if (res.ok) {
-        const data: DexScreenerToken = await res.json();
-        if (data.pairs && data.pairs.length > 0) {
-          const pair = data.pairs[0];
-          metadata[mint] = {
-            name: pair.baseToken.name,
-            symbol: pair.baseToken.symbol,
-            icon: pair.info?.imageUrl || "🪙",
-          };
+        const data = await res.json();
+        for (const item of data) {
+          if (!item.account) continue;
+          const name = item.onChainMetadata?.metadata?.data?.name
+            || item.offChainMetadata?.metadata?.name
+            || item.legacyMetadata?.name
+            || "";
+          const symbol = item.onChainMetadata?.metadata?.data?.symbol
+            || item.offChainMetadata?.metadata?.symbol
+            || item.legacyMetadata?.symbol
+            || "";
+          const icon = item.offChainMetadata?.metadata?.image
+            || item.onChainMetadata?.metadata?.data?.uri
+            || "";
+
+          if (name || symbol) {
+            metadata[item.account] = {
+              name: name.replace(/\0/g, "").trim(),
+              symbol: symbol.replace(/\0/g, "").trim(),
+              icon: icon || "🪙",
+            };
+          }
         }
       }
     } catch {
-      // skip
+      // continue
     }
   }
 
   return metadata;
+}
+
+async function getDexScreenerMetadata(
+  mints: string[]
+): Promise<Record<string, { name: string; symbol: string; icon: string }>> {
+  const metadata: Record<string, { name: string; symbol: string; icon: string }> = {};
+
+  const batch = mints.slice(0, 30).join(",");
+  if (!batch) return metadata;
+
+  try {
+    const res = await fetch(
+      `https://api.dexscreener.com/tokens/v1/solana/${batch}`,
+      { next: { revalidate: 3600 } }
+    );
+
+    if (res.ok) {
+      const data = await res.json();
+      const pairs = Array.isArray(data) ? data : data.pairs || [];
+      for (const pair of pairs) {
+        const token = pair.baseToken;
+        if (token?.address && !metadata[token.address]) {
+          metadata[token.address] = {
+            name: token.name || "",
+            symbol: token.symbol || "",
+            icon: pair.info?.imageUrl || "🪙",
+          };
+        }
+      }
+    }
+  } catch {
+    // fallback
+  }
+
+  return metadata;
+}
+
+export async function getTokenMetadata(
+  mints: string[]
+): Promise<Record<string, { name: string; symbol: string; icon: string }>> {
+  if (mints.length === 0) return {};
+
+  const apiKey = process.env.HELIUS_API_KEY;
+
+  const [heliusMeta, dexMeta] = await Promise.all([
+    apiKey ? getHeliusMetadata(mints, apiKey) : Promise.resolve({} as Record<string, { name: string; symbol: string; icon: string }>),
+    getDexScreenerMetadata(mints),
+  ]);
+
+  const merged: Record<string, { name: string; symbol: string; icon: string }> = {};
+
+  for (const mint of mints) {
+    const helius = heliusMeta[mint];
+    const dex = dexMeta[mint];
+
+    if (helius && helius.name) {
+      merged[mint] = {
+        name: helius.name,
+        symbol: helius.symbol || (dex?.symbol || ""),
+        icon: (dex?.icon && dex.icon.startsWith("http")) ? dex.icon : helius.icon,
+      };
+    } else if (dex && dex.name) {
+      merged[mint] = dex;
+    }
+  }
+
+  return merged;
 }
