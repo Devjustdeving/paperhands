@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useParams } from "next/navigation";
+import { useState, useEffect, Suspense } from "react";
+import { useParams, useSearchParams } from "next/navigation";
 import { formatUSD, truncateAddress } from "@/lib/utils";
 import { AnalysisTab, WalletAnalysis } from "@/lib/types";
 import { TokenCarousel } from "@/components/TokenCarousel";
@@ -10,6 +10,8 @@ import { PaperhandScore } from "@/components/PaperhandScore";
 import { BadgeGrid } from "@/components/BadgeGrid";
 import { AIRoast } from "@/components/AIRoast";
 import { WhatIfSlider } from "@/components/WhatIfSlider";
+import { AlertsPanel } from "@/components/AlertsPanel";
+import { WeeklyDigest } from "@/components/WeeklyDigest";
 import Link from "next/link";
 
 const TABS: { id: AnalysisTab; label: string }[] = [
@@ -18,8 +20,10 @@ const TABS: { id: AnalysisTab; label: string }[] = [
   { id: "gained", label: "Gained" },
 ];
 
-export default function WalletPage() {
+function WalletContent() {
   const { address } = useParams<{ address: string }>();
+  const searchParams = useSearchParams();
+  const chain = searchParams.get("chain") || "solana";
   const [tab, setTab] = useState<AnalysisTab>("paperhand");
   const [activeIndex, setActiveIndex] = useState(0);
   const [analysis, setAnalysis] = useState<WalletAnalysis | null>(null);
@@ -30,7 +34,7 @@ export default function WalletPage() {
     setLoading(true);
     setError(null);
 
-    fetch(`/api/wallet/${address}`)
+    fetch(`/api/wallet/${address}?chain=${chain}`)
       .then((res) => {
         if (!res.ok) throw new Error("Failed to load wallet data");
         return res.json();
@@ -44,7 +48,7 @@ export default function WalletPage() {
       })
       .catch(() => setError("Failed to analyze wallet. Please try again."))
       .finally(() => setLoading(false));
-  }, [address]);
+  }, [address, chain]);
 
   if (loading) {
     return (
@@ -78,12 +82,18 @@ export default function WalletPage() {
       : analysis.gained;
 
   const activeTrade = trades[activeIndex];
+  const allSoldTokens = [...analysis.paperhanded, ...analysis.gained];
 
   return (
     <div className="py-8 space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-muted text-sm">Wallet Address</p>
+          <div className="flex items-center gap-2">
+            <p className="text-muted text-sm">Wallet Address</p>
+            <span className="text-xs px-2 py-0.5 bg-accent/20 text-accent rounded-full">
+              {chain}
+            </span>
+          </div>
           <p className="font-mono text-lg">{truncateAddress(address, 8)}</p>
         </div>
         <div className="flex gap-2">
@@ -126,9 +136,9 @@ export default function WalletPage() {
             >
               {t.label}
               <span className="ml-1 text-xs text-muted">
-                ({tab === "paperhand"
+                ({t.id === "paperhand"
                   ? analysis.paperhanded.length
-                  : tab === "roundtrip"
+                  : t.id === "roundtrip"
                   ? analysis.roundtripped.length
                   : analysis.gained.length})
               </span>
@@ -160,7 +170,26 @@ export default function WalletPage() {
 
       <AIRoast analysis={analysis} />
 
+      <WeeklyDigest analysis={analysis} />
+
+      <AlertsPanel walletAddress={address} soldTokens={allSoldTokens} />
+
       <BadgeGrid badges={analysis.badges} />
     </div>
+  );
+}
+
+export default function WalletPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
+          <div className="w-12 h-12 border-4 border-accent/30 border-t-accent rounded-full animate-spin" />
+          <p className="text-muted text-sm">Loading...</p>
+        </div>
+      }
+    >
+      <WalletContent />
+    </Suspense>
   );
 }

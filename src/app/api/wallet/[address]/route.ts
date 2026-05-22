@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getWalletTransactions, parseSwaps } from "@/lib/helius";
 import { analyzeWallet } from "@/lib/analyzer";
+import { analyzeEVMWallet } from "@/lib/evm-analyzer";
 import { getMockWalletAnalysis } from "@/lib/mock-data";
 
 export async function GET(
@@ -8,6 +9,43 @@ export async function GET(
   { params }: { params: Promise<{ address: string }> }
 ) {
   const { address } = await params;
+  const chain = request.nextUrl.searchParams.get("chain") || "solana";
+
+  if (chain === "ethereum" || chain === "base" || chain === "bsc") {
+    try {
+      const apiKey = chain === "ethereum"
+        ? process.env.ETHERSCAN_API_KEY
+        : chain === "base"
+        ? process.env.BASESCAN_API_KEY
+        : process.env.BSCSCAN_API_KEY;
+
+      const analysis = await analyzeEVMWallet(
+        address,
+        chain as "ethereum" | "base" | "bsc",
+        apiKey || undefined
+      );
+
+      if (
+        analysis.paperhanded.length === 0 &&
+        analysis.roundtripped.length === 0 &&
+        analysis.gained.length === 0
+      ) {
+        return NextResponse.json(
+          { error: "No token trades found for this wallet on " + chain },
+          { status: 404 }
+        );
+      }
+
+      return NextResponse.json(analysis);
+    } catch (error) {
+      console.error("EVM analysis error:", error);
+      return NextResponse.json(
+        { error: "Failed to analyze wallet. Please try again." },
+        { status: 500 }
+      );
+    }
+  }
+
   const apiKey = process.env.HELIUS_API_KEY;
 
   if (!apiKey) {
