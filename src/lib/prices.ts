@@ -35,7 +35,7 @@ export async function getTokenPrices(
         }
       }
     } catch {
-      // continue with what we have
+      // continue
     }
   }
 
@@ -59,51 +59,98 @@ export async function getSOLPrice(): Promise<number> {
   return 170;
 }
 
-interface HeliusAsset {
-  id: string;
-  content?: {
-    metadata?: {
-      name?: string;
-      symbol?: string;
-    };
-    links?: {
-      image?: string;
-    };
-    files?: { uri?: string; cdn_uri?: string }[];
-  };
-}
+type TokenMeta = { name: string; symbol: string; icon: string };
 
-async function getHeliusMetadata(
+async function getHeliusDASMetadata(
   mints: string[],
   apiKey: string
-): Promise<Record<string, { name: string; symbol: string; icon: string }>> {
-  const metadata: Record<string, { name: string; symbol: string; icon: string }> = {};
+): Promise<Record<string, TokenMeta>> {
+  const metadata: Record<string, TokenMeta> = {};
 
   const batchSize = 100;
   for (let i = 0; i < mints.length; i += batchSize) {
     const batch = mints.slice(i, i + batchSize);
     try {
-      const res = await fetch(`https://api.helius.xyz/v0/tokens/metadata?api-key=${apiKey}`, {
+      const res = await fetch(`https://mainnet.helius-rpc.com/?api-key=${apiKey}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mintAccounts: batch, includeOffChain: true }),
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: "meta",
+          method: "getAssetBatch",
+          params: { ids: batch },
+        }),
       });
+
+      if (res.ok) {
+        const data = await res.json();
+        const assets = data.result || [];
+        for (const asset of assets) {
+          if (!asset?.id) continue;
+          const name = asset.content?.metadata?.name || "";
+          const symbol = asset.content?.metadata?.symbol || "";
+          const icon = asset.content?.links?.image
+            || asset.content?.files?.[0]?.cdn_uri
+            || asset.content?.files?.[0]?.uri
+            || "";
+
+          if (name || symbol) {
+            metadata[asset.id] = {
+              name: name.replace(/\0/g, "").trim(),
+              symbol: symbol.replace(/\0/g, "").trim(),
+              icon: icon || "🪙",
+            };
+          }
+        }
+      }
+    } catch {
+      // fallback to legacy endpoint
+    }
+  }
+
+  if (Object.keys(metadata).length === 0) {
+    return getHeliusLegacyMetadata(mints, apiKey);
+  }
+
+  return metadata;
+}
+
+async function getHeliusLegacyMetadata(
+  mints: string[],
+  apiKey: string
+): Promise<Record<string, TokenMeta>> {
+  const metadata: Record<string, TokenMeta> = {};
+
+  const batchSize = 100;
+  for (let i = 0; i < mints.length; i += batchSize) {
+    const batch = mints.slice(i, i + batchSize);
+    try {
+      const res = await fetch(
+        `https://api.helius.xyz/v0/tokens/metadata?api-key=${apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mintAccounts: batch, includeOffChain: true }),
+        }
+      );
 
       if (res.ok) {
         const data = await res.json();
         for (const item of data) {
           if (!item.account) continue;
-          const name = item.onChainMetadata?.metadata?.data?.name
-            || item.offChainMetadata?.metadata?.name
-            || item.legacyMetadata?.name
-            || "";
-          const symbol = item.onChainMetadata?.metadata?.data?.symbol
-            || item.offChainMetadata?.metadata?.symbol
-            || item.legacyMetadata?.symbol
-            || "";
-          const icon = item.offChainMetadata?.metadata?.image
-            || item.onChainMetadata?.metadata?.data?.uri
-            || "";
+          const name =
+            item.onChainMetadata?.metadata?.data?.name ||
+            item.offChainMetadata?.metadata?.name ||
+            item.legacyMetadata?.name ||
+            "";
+          const symbol =
+            item.onChainMetadata?.metadata?.data?.symbol ||
+            item.offChainMetadata?.metadata?.symbol ||
+            item.legacyMetadata?.symbol ||
+            "";
+          const icon =
+            item.offChainMetadata?.metadata?.image ||
+            "";
 
           if (name || symbol) {
             metadata[item.account] = {
@@ -124,34 +171,68 @@ async function getHeliusMetadata(
 
 async function getDexScreenerMetadata(
   mints: string[]
-): Promise<Record<string, { name: string; symbol: string; icon: string }>> {
-  const metadata: Record<string, { name: string; symbol: string; icon: string }> = {};
+): Promise<Record<string, TokenMeta>> {
+  const metadata: Record<string, TokenMeta> = {};
 
-  const batch = mints.slice(0, 30).join(",");
-  if (!batch) return metadata;
+  const batchSize = 30;
+  for (let i = 0; i < mints.length; i += batchSize) {
+    const batch = mints.slice(i, i + batchSize).join(",");
+    if (!batch) continue;
+
+    try {
+      const res = await fetch(
+        `https://api.dexscreener.com/tokens/v1/solana/${batch}`,
+        { next: { revalidate: 3600 } }
+      );
+
+      if (res.ok) {
+        const data = await res.json();
+        const pairs = Array.isArray(data) ? data : data.pairs || [];
+        for (const pair of pairs) {
+          const token = pair.baseToken;
+          if (token?.address && !metadata[token.address]) {
+            metadata[token.address] = {
+              name: token.name || "",
+              symbol: token.symbol || "",
+              icon: pair.info?.imageUrl || "🪙",
+            };
+          }
+        }
+      }
+    } catch {
+      // continue
+    }
+  }
+
+  return metadata;
+}
+
+async function getJupiterTokenList(
+  mints: string[]
+): Promise<Record<string, TokenMeta>> {
+  const metadata: Record<string, TokenMeta> = {};
 
   try {
-    const res = await fetch(
-      `https://api.dexscreener.com/tokens/v1/solana/${batch}`,
-      { next: { revalidate: 3600 } }
-    );
+    const res = await fetch("https://token.jup.ag/all", {
+      next: { revalidate: 3600 },
+    });
 
     if (res.ok) {
-      const data = await res.json();
-      const pairs = Array.isArray(data) ? data : data.pairs || [];
-      for (const pair of pairs) {
-        const token = pair.baseToken;
-        if (token?.address && !metadata[token.address]) {
+      const tokens = await res.json();
+      const mintSet = new Set(mints);
+
+      for (const token of tokens) {
+        if (mintSet.has(token.address)) {
           metadata[token.address] = {
             name: token.name || "",
             symbol: token.symbol || "",
-            icon: pair.info?.imageUrl || "🪙",
+            icon: token.logoURI || "🪙",
           };
         }
       }
     }
   } catch {
-    // fallback
+    // continue
   }
 
   return metadata;
@@ -159,30 +240,36 @@ async function getDexScreenerMetadata(
 
 export async function getTokenMetadata(
   mints: string[]
-): Promise<Record<string, { name: string; symbol: string; icon: string }>> {
+): Promise<Record<string, TokenMeta>> {
   if (mints.length === 0) return {};
 
   const apiKey = process.env.HELIUS_API_KEY;
 
-  const [heliusMeta, dexMeta] = await Promise.all([
-    apiKey ? getHeliusMetadata(mints, apiKey) : Promise.resolve({} as Record<string, { name: string; symbol: string; icon: string }>),
+  const [heliusMeta, dexMeta, jupMeta] = await Promise.all([
+    apiKey
+      ? getHeliusDASMetadata(mints, apiKey)
+      : Promise.resolve({} as Record<string, TokenMeta>),
     getDexScreenerMetadata(mints),
+    getJupiterTokenList(mints),
   ]);
 
-  const merged: Record<string, { name: string; symbol: string; icon: string }> = {};
+  const merged: Record<string, TokenMeta> = {};
 
   for (const mint of mints) {
     const helius = heliusMeta[mint];
     const dex = dexMeta[mint];
+    const jup = jupMeta[mint];
 
-    if (helius && helius.name) {
-      merged[mint] = {
-        name: helius.name,
-        symbol: helius.symbol || (dex?.symbol || ""),
-        icon: (dex?.icon && dex.icon.startsWith("http")) ? dex.icon : helius.icon,
-      };
-    } else if (dex && dex.name) {
-      merged[mint] = dex;
+    const name = helius?.name || jup?.name || dex?.name || "";
+    const symbol = helius?.symbol || jup?.symbol || dex?.symbol || "";
+
+    let icon = "🪙";
+    if (dex?.icon && dex.icon.startsWith("http")) icon = dex.icon;
+    else if (jup?.icon && jup.icon.startsWith("http")) icon = jup.icon;
+    else if (helius?.icon && helius.icon.startsWith("http")) icon = helius.icon;
+
+    if (name || symbol) {
+      merged[mint] = { name, symbol, icon };
     }
   }
 
