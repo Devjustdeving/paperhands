@@ -47,10 +47,9 @@ export async function getWalletTransactions(
   const allTxs: HeliusTransaction[] = [];
   let lastSignature: string | undefined;
 
-  for (let page = 0; page < 5; page++) {
+  for (let page = 0; page < 10; page++) {
     const params = new URLSearchParams({
       "api-key": apiKey,
-      type: "SWAP",
     });
     if (lastSignature) params.set("before", lastSignature);
 
@@ -85,6 +84,48 @@ export function parseSwaps(
   const swaps: ParsedSwap[] = [];
 
   for (const tx of transactions) {
+    if (tx.type !== "SWAP") {
+      if (tx.tokenTransfers && tx.tokenTransfers.length > 0) {
+        for (const transfer of tx.tokenTransfers) {
+          if (transfer.mint === SOL_MINT) continue;
+          if (transfer.tokenAmount <= 0) continue;
+
+          if (transfer.toUserAccount === walletAddress) {
+            const solTransfer = tx.nativeTransfers?.find(
+              (n) => n.fromUserAccount === walletAddress
+            );
+            const solAmount = solTransfer ? solTransfer.amount / 1e9 : 0;
+            swaps.push({
+              signature: tx.signature,
+              timestamp: tx.timestamp,
+              source: tx.source || "transfer",
+              solSpent: solAmount,
+              solReceived: 0,
+              tokenMint: transfer.mint,
+              tokenAmount: transfer.tokenAmount,
+              direction: "buy",
+            });
+          } else if (transfer.fromUserAccount === walletAddress) {
+            const solTransfer = tx.nativeTransfers?.find(
+              (n) => n.toUserAccount === walletAddress
+            );
+            const solAmount = solTransfer ? solTransfer.amount / 1e9 : 0;
+            swaps.push({
+              signature: tx.signature,
+              timestamp: tx.timestamp,
+              source: tx.source || "transfer",
+              solSpent: 0,
+              solReceived: solAmount,
+              tokenMint: transfer.mint,
+              tokenAmount: transfer.tokenAmount,
+              direction: "sell",
+            });
+          }
+        }
+      }
+      continue;
+    }
+
     const swap = tx.events?.swap;
     if (!swap) continue;
 
