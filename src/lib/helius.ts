@@ -38,6 +38,7 @@ export interface ParsedSwap {
   tokenMint: string;
   tokenAmount: number;
   direction: "buy" | "sell";
+  usdValue?: number;
 }
 
 export async function getWalletTransactions(
@@ -77,6 +78,19 @@ export async function getWalletTransactions(
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 
+const STABLECOIN_MINTS = new Set([
+  "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  "Es9vMFrzaCERmJfrF4H2FYBBnUDqyafMTpwdMiW68tB8",
+]);
+
+function isValueMint(mint: string): boolean {
+  return mint === SOL_MINT || STABLECOIN_MINTS.has(mint);
+}
+
+function parseRawAmount(raw: { tokenAmount: string; decimals: number }): number {
+  return Number(raw.tokenAmount) / Math.pow(10, raw.decimals);
+}
+
 export function parseSwaps(
   transactions: HeliusTransaction[],
   walletAddress: string
@@ -100,11 +114,18 @@ export function parseSwaps(
           .filter((t) => t.mint === SOL_MINT && t.toUserAccount === walletAddress)
           .reduce((sum, t) => sum + t.tokenAmount, 0);
 
+        const stableOut = tx.tokenTransfers
+          .filter((t) => STABLECOIN_MINTS.has(t.mint) && t.fromUserAccount === walletAddress)
+          .reduce((sum, t) => sum + t.tokenAmount, 0);
+        const stableIn = tx.tokenTransfers
+          .filter((t) => STABLECOIN_MINTS.has(t.mint) && t.toUserAccount === walletAddress)
+          .reduce((sum, t) => sum + t.tokenAmount, 0);
+
         const totalSolSpent = solOut + wsolOut;
         const totalSolReceived = solIn + wsolIn;
 
         for (const transfer of tx.tokenTransfers) {
-          if (transfer.mint === SOL_MINT) continue;
+          if (isValueMint(transfer.mint)) continue;
           if (transfer.tokenAmount <= 0) continue;
 
           if (transfer.toUserAccount === walletAddress) {
@@ -117,6 +138,7 @@ export function parseSwaps(
               tokenMint: transfer.mint,
               tokenAmount: transfer.tokenAmount,
               direction: "buy",
+              usdValue: totalSolSpent === 0 && stableOut > 0 ? stableOut : undefined,
             });
           } else if (transfer.fromUserAccount === walletAddress) {
             swaps.push({
@@ -128,6 +150,7 @@ export function parseSwaps(
               tokenMint: transfer.mint,
               tokenAmount: transfer.tokenAmount,
               direction: "sell",
+              usdValue: totalSolReceived === 0 && stableIn > 0 ? stableIn : undefined,
             });
           }
         }
@@ -145,94 +168,77 @@ export function parseSwaps(
       ? Number(swap.nativeOutput.amount) / 1e9
       : 0;
 
-    const tokenInputs = swap.tokenInputs.filter((t) => t.mint !== SOL_MINT);
-    const tokenOutputs = swap.tokenOutputs.filter((t) => t.mint !== SOL_MINT);
+    const solInput = swap.tokenInputs.find((t) => t.mint === SOL_MINT);
+    const solOutput = swap.tokenOutputs.find((t) => t.mint === SOL_MINT);
+    const solInputAmt = solInput ? parseRawAmount(solInput.rawTokenAmount) : 0;
+    const solOutputAmt = solOutput ? parseRawAmount(solOutput.rawTokenAmount) : 0;
 
-    if (nativeInAmount > 0 && tokenOutputs.length > 0) {
+    const totalSolIn = nativeInAmount + solInputAmt;
+    const totalSolOut = nativeOutAmount + solOutputAmt;
+
+    const stableInput = swap.tokenInputs.find((t) => STABLECOIN_MINTS.has(t.mint));
+    const stableOutput = swap.tokenOutputs.find((t) => STABLECOIN_MINTS.has(t.mint));
+    const stableInAmt = stableInput ? parseRawAmount(stableInput.rawTokenAmount) : 0;
+    const stableOutAmt = stableOutput ? parseRawAmount(stableOutput.rawTokenAmount) : 0;
+
+    const tokenInputs = swap.tokenInputs.filter((t) => !isValueMint(t.mint));
+    const tokenOutputs = swap.tokenOutputs.filter((t) => !isValueMint(t.mint));
+
+    if (totalSolIn > 0 && tokenOutputs.length > 0) {
       for (const out of tokenOutputs) {
-        const amount =
-          Number(out.rawTokenAmount.tokenAmount) /
-          Math.pow(10, out.rawTokenAmount.decimals);
         swaps.push({
           signature: tx.signature,
           timestamp: tx.timestamp,
           source: tx.source,
-          solSpent: nativeInAmount,
+          solSpent: totalSolIn,
           solReceived: 0,
           tokenMint: out.mint,
-          tokenAmount: amount,
+          tokenAmount: parseRawAmount(out.rawTokenAmount),
           direction: "buy",
         });
       }
-    }
-
-    if (nativeOutAmount > 0 && tokenInputs.length > 0) {
-      for (const inp of tokenInputs) {
-        const amount =
-          Number(inp.rawTokenAmount.tokenAmount) /
-          Math.pow(10, inp.rawTokenAmount.decimals);
+    } else if (stableInAmt > 0 && tokenOutputs.length > 0) {
+      for (const out of tokenOutputs) {
         swaps.push({
           signature: tx.signature,
           timestamp: tx.timestamp,
           source: tx.source,
           solSpent: 0,
-          solReceived: nativeOutAmount,
-          tokenMint: inp.mint,
-          tokenAmount: amount,
-          direction: "sell",
+          solReceived: 0,
+          tokenMint: out.mint,
+          tokenAmount: parseRawAmount(out.rawTokenAmount),
+          direction: "buy",
+          usdValue: stableInAmt,
         });
       }
     }
 
-    if (
-      nativeInAmount === 0 &&
-      nativeOutAmount === 0 &&
-      tokenInputs.length > 0 &&
-      tokenOutputs.length > 0
-    ) {
-      const solInput = swap.tokenInputs.find((t) => t.mint === SOL_MINT);
-      const solOutput = swap.tokenOutputs.find((t) => t.mint === SOL_MINT);
-
-      if (solInput && tokenOutputs.length > 0) {
-        const solAmt =
-          Number(solInput.rawTokenAmount.tokenAmount) /
-          Math.pow(10, solInput.rawTokenAmount.decimals);
-        for (const out of tokenOutputs) {
-          const amount =
-            Number(out.rawTokenAmount.tokenAmount) /
-            Math.pow(10, out.rawTokenAmount.decimals);
-          swaps.push({
-            signature: tx.signature,
-            timestamp: tx.timestamp,
-            source: tx.source,
-            solSpent: solAmt,
-            solReceived: 0,
-            tokenMint: out.mint,
-            tokenAmount: amount,
-            direction: "buy",
-          });
-        }
+    if (totalSolOut > 0 && tokenInputs.length > 0) {
+      for (const inp of tokenInputs) {
+        swaps.push({
+          signature: tx.signature,
+          timestamp: tx.timestamp,
+          source: tx.source,
+          solSpent: 0,
+          solReceived: totalSolOut,
+          tokenMint: inp.mint,
+          tokenAmount: parseRawAmount(inp.rawTokenAmount),
+          direction: "sell",
+        });
       }
-
-      if (solOutput && tokenInputs.length > 0) {
-        const solAmt =
-          Number(solOutput.rawTokenAmount.tokenAmount) /
-          Math.pow(10, solOutput.rawTokenAmount.decimals);
-        for (const inp of tokenInputs) {
-          const amount =
-            Number(inp.rawTokenAmount.tokenAmount) /
-            Math.pow(10, inp.rawTokenAmount.decimals);
-          swaps.push({
-            signature: tx.signature,
-            timestamp: tx.timestamp,
-            source: tx.source,
-            solSpent: 0,
-            solReceived: solAmt,
-            tokenMint: inp.mint,
-            tokenAmount: amount,
-            direction: "sell",
-          });
-        }
+    } else if (stableOutAmt > 0 && tokenInputs.length > 0) {
+      for (const inp of tokenInputs) {
+        swaps.push({
+          signature: tx.signature,
+          timestamp: tx.timestamp,
+          source: tx.source,
+          solSpent: 0,
+          solReceived: 0,
+          tokenMint: inp.mint,
+          tokenAmount: parseRawAmount(inp.rawTokenAmount),
+          direction: "sell",
+          usdValue: stableOutAmt,
+        });
       }
     }
   }

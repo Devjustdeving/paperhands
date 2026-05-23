@@ -12,10 +12,12 @@ export function WhatIfSlider({ trade }: WhatIfSliderProps) {
   const maxDays = 90;
   const [days, setDays] = useState(30);
 
-  const growthFactor = 1 + (trade.percentageGain / 100) * (days / 30);
-  const hypotheticalValue = trade.boughtWithUSD * growthFactor;
-  const actualValue = trade.soldForUSD;
-  const difference = hypotheticalValue - actualValue;
+  const baseValue = trade.totalValueUSD > 0 ? trade.totalValueUSD : trade.fumbledUSD;
+  const soldValue = trade.soldForUSD > 0 ? trade.soldForUSD : trade.boughtWithUSD;
+  const dayFactor = days / 30;
+  const hypotheticalValue = soldValue + (baseValue - soldValue) * dayFactor;
+  const actualValue = soldValue;
+  const difference = Math.max(0, hypotheticalValue - actualValue);
 
   return (
     <div className="p-6 bg-card border border-border rounded-2xl">

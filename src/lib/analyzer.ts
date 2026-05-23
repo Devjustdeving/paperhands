@@ -2,6 +2,12 @@ import { ParsedSwap } from "./helius";
 import { getTokenPrices, getSOLPrice, getTokenMetadata } from "./prices";
 import { TokenTrade, WalletAnalysis, Badge } from "./types";
 
+const SKIP_MINTS = new Set([
+  "So11111111111111111111111111111111111111112",
+  "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  "Es9vMFrzaCERmJfrF4H2FYBBnUDqyafMTpwdMiW68tB8",
+]);
+
 interface TokenPosition {
   mint: string;
   buys: ParsedSwap[];
@@ -10,6 +16,8 @@ interface TokenPosition {
   totalSoldTokens: number;
   totalSolSpent: number;
   totalSolReceived: number;
+  totalUsdSpent: number;
+  totalUsdReceived: number;
   firstBuyTimestamp: number;
   lastSellTimestamp: number;
 }
@@ -93,6 +101,8 @@ export async function analyzeWallet(
   const positions = new Map<string, TokenPosition>();
 
   for (const swap of swaps) {
+    if (SKIP_MINTS.has(swap.tokenMint)) continue;
+
     if (!positions.has(swap.tokenMint)) {
       positions.set(swap.tokenMint, {
         mint: swap.tokenMint,
@@ -102,6 +112,8 @@ export async function analyzeWallet(
         totalSoldTokens: 0,
         totalSolSpent: 0,
         totalSolReceived: 0,
+        totalUsdSpent: 0,
+        totalUsdReceived: 0,
         firstBuyTimestamp: swap.timestamp,
         lastSellTimestamp: swap.timestamp,
       });
@@ -112,6 +124,7 @@ export async function analyzeWallet(
       pos.buys.push(swap);
       pos.totalBoughtTokens += swap.tokenAmount;
       pos.totalSolSpent += swap.solSpent;
+      if (swap.usdValue) pos.totalUsdSpent += swap.usdValue;
       if (swap.timestamp < pos.firstBuyTimestamp) {
         pos.firstBuyTimestamp = swap.timestamp;
       }
@@ -119,6 +132,7 @@ export async function analyzeWallet(
       pos.sells.push(swap);
       pos.totalSoldTokens += swap.tokenAmount;
       pos.totalSolReceived += swap.solReceived;
+      if (swap.usdValue) pos.totalUsdReceived += swap.usdValue;
       if (swap.timestamp > pos.lastSellTimestamp) {
         pos.lastSellTimestamp = swap.timestamp;
       }
@@ -150,10 +164,21 @@ export async function analyzeWallet(
     const remainingTokens = pos.totalBoughtTokens - pos.totalSoldTokens;
     const currentValueOfRemaining = Math.max(0, remainingTokens) * currentPrice;
 
-    const soldUSD = pos.totalSolReceived * solPrice;
-    const boughtUSD = pos.totalSolSpent > 0
-      ? pos.totalSolSpent * solPrice
-      : soldUSD > 0 ? soldUSD : 0;
+    const solBoughtUSD = pos.totalSolSpent * solPrice;
+    const solSoldUSD = pos.totalSolReceived * solPrice;
+    const boughtUSD = solBoughtUSD > 0 ? solBoughtUSD
+      : pos.totalUsdSpent > 0 ? pos.totalUsdSpent
+      : solSoldUSD > 0 ? solSoldUSD
+      : pos.totalUsdReceived > 0 ? pos.totalUsdReceived
+      : 0;
+    const soldUSD = solSoldUSD > 0 ? solSoldUSD
+      : pos.totalUsdReceived > 0 ? pos.totalUsdReceived
+      : 0;
+
+    const boughtSOL = pos.totalSolSpent > 0 ? pos.totalSolSpent
+      : solPrice > 0 ? boughtUSD / solPrice : 0;
+    const soldSOL = pos.totalSolReceived > 0 ? pos.totalSolReceived
+      : solPrice > 0 ? soldUSD / solPrice : 0;
 
     const allTimestamps = [
       ...pos.buys.map((s) => s.timestamp),
@@ -167,18 +192,11 @@ export async function analyzeWallet(
     const fumbledUSD = Math.max(0, allTokenValueAtCurrentPrice - soldUSD);
     const fumbledSOL = solPrice > 0 ? fumbledUSD / solPrice : 0;
 
-    const profitSOL = pos.totalSolReceived - pos.totalSolSpent;
+    const profitSOL = soldSOL - boughtSOL;
     const profitUSD = soldUSD - boughtUSD;
 
     const referenceUSD = soldUSD > 0 ? soldUSD : boughtUSD > 0 ? boughtUSD : 1;
     const percentageGain = Math.max(0, Math.round(((allTokenValueAtCurrentPrice / referenceUSD) - 1) * 100));
-
-    const boughtSOL = pos.totalSolSpent > 0
-      ? pos.totalSolSpent
-      : solPrice > 0 ? boughtUSD / solPrice : 0;
-    const soldSOL = pos.totalSolReceived > 0
-      ? pos.totalSolReceived
-      : solPrice > 0 ? soldUSD / solPrice : 0;
 
     const trade: TokenTrade = {
       token: {
