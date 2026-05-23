@@ -150,18 +150,18 @@ export async function analyzeWallet(
     const remainingTokens = pos.totalBoughtTokens - pos.totalSoldTokens;
     const currentValueOfRemaining = Math.max(0, remainingTokens) * currentPrice;
 
+    const soldUSD = pos.totalSolReceived * solPrice;
     const boughtUSD = pos.totalSolSpent > 0
       ? pos.totalSolSpent * solPrice
-      : pos.totalSoldTokens * currentPrice * 0.1;
-    const soldUSD = pos.totalSolReceived * solPrice;
+      : soldUSD > 0 ? soldUSD : 0;
 
-    const firstTimestamp = pos.buys.length > 0
-      ? pos.firstBuyTimestamp
-      : Math.min(...pos.sells.map((s) => s.timestamp));
-    const lastTimestamp = pos.sells.length > 0
-      ? pos.lastSellTimestamp
-      : Date.now() / 1000;
-    const heldHours = Math.round(Math.abs(lastTimestamp - firstTimestamp) / 3600);
+    const allTimestamps = [
+      ...pos.buys.map((s) => s.timestamp),
+      ...pos.sells.map((s) => s.timestamp),
+    ];
+    const firstTimestamp = Math.min(...allTimestamps);
+    const lastTimestamp = Math.max(...allTimestamps);
+    const heldHours = Math.max(1, Math.round(Math.abs(lastTimestamp - firstTimestamp) / 3600));
 
     const allTokenValueAtCurrentPrice = tokenCount * currentPrice;
     const fumbledUSD = Math.max(0, allTokenValueAtCurrentPrice - soldUSD);
@@ -169,7 +169,16 @@ export async function analyzeWallet(
 
     const profitSOL = pos.totalSolReceived - pos.totalSolSpent;
     const profitUSD = soldUSD - boughtUSD;
-    const percentageGain = boughtUSD > 0 ? Math.round((profitUSD / boughtUSD) * 100) : 0;
+
+    const referenceUSD = soldUSD > 0 ? soldUSD : boughtUSD > 0 ? boughtUSD : 1;
+    const percentageGain = Math.max(0, Math.round(((allTokenValueAtCurrentPrice / referenceUSD) - 1) * 100));
+
+    const boughtSOL = pos.totalSolSpent > 0
+      ? pos.totalSolSpent
+      : solPrice > 0 ? boughtUSD / solPrice : 0;
+    const soldSOL = pos.totalSolReceived > 0
+      ? pos.totalSolReceived
+      : solPrice > 0 ? soldUSD / solPrice : 0;
 
     const trade: TokenTrade = {
       token: {
@@ -179,16 +188,16 @@ export async function analyzeWallet(
         contractAddress: mint,
         platform: (pos.buys[0] || pos.sells[0])?.source || "unknown",
       },
-      boughtWithSOL: pos.totalSolSpent,
+      boughtWithSOL: boughtSOL,
       boughtWithUSD: boughtUSD,
-      soldForSOL: pos.totalSolReceived,
+      soldForSOL: soldSOL,
       soldForUSD: soldUSD,
       fumbledSOL,
       fumbledUSD,
-      heldForHours: Math.abs(heldHours),
+      heldForHours: heldHours,
       tokenAmount: tokenCount,
       totalValueUSD: allTokenValueAtCurrentPrice,
-      percentageGain: Math.abs(percentageGain),
+      percentageGain,
     };
 
     const soldAll = pos.totalSoldTokens >= pos.totalBoughtTokens * 0.9;

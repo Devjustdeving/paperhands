@@ -86,36 +86,45 @@ export function parseSwaps(
   for (const tx of transactions) {
     if (tx.type !== "SWAP") {
       if (tx.tokenTransfers && tx.tokenTransfers.length > 0) {
+        const solOut = (tx.nativeTransfers || [])
+          .filter((n) => n.fromUserAccount === walletAddress)
+          .reduce((sum, n) => sum + n.amount, 0) / 1e9;
+        const solIn = (tx.nativeTransfers || [])
+          .filter((n) => n.toUserAccount === walletAddress)
+          .reduce((sum, n) => sum + n.amount, 0) / 1e9;
+
+        const wsolOut = tx.tokenTransfers
+          .filter((t) => t.mint === SOL_MINT && t.fromUserAccount === walletAddress)
+          .reduce((sum, t) => sum + t.tokenAmount, 0);
+        const wsolIn = tx.tokenTransfers
+          .filter((t) => t.mint === SOL_MINT && t.toUserAccount === walletAddress)
+          .reduce((sum, t) => sum + t.tokenAmount, 0);
+
+        const totalSolSpent = solOut + wsolOut;
+        const totalSolReceived = solIn + wsolIn;
+
         for (const transfer of tx.tokenTransfers) {
           if (transfer.mint === SOL_MINT) continue;
           if (transfer.tokenAmount <= 0) continue;
 
           if (transfer.toUserAccount === walletAddress) {
-            const solTransfer = tx.nativeTransfers?.find(
-              (n) => n.fromUserAccount === walletAddress
-            );
-            const solAmount = solTransfer ? solTransfer.amount / 1e9 : 0;
             swaps.push({
               signature: tx.signature,
               timestamp: tx.timestamp,
               source: tx.source || "transfer",
-              solSpent: solAmount,
+              solSpent: totalSolSpent,
               solReceived: 0,
               tokenMint: transfer.mint,
               tokenAmount: transfer.tokenAmount,
               direction: "buy",
             });
           } else if (transfer.fromUserAccount === walletAddress) {
-            const solTransfer = tx.nativeTransfers?.find(
-              (n) => n.toUserAccount === walletAddress
-            );
-            const solAmount = solTransfer ? solTransfer.amount / 1e9 : 0;
             swaps.push({
               signature: tx.signature,
               timestamp: tx.timestamp,
               source: tx.source || "transfer",
               solSpent: 0,
-              solReceived: solAmount,
+              solReceived: totalSolReceived,
               tokenMint: transfer.mint,
               tokenAmount: transfer.tokenAmount,
               direction: "sell",
