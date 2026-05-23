@@ -193,7 +193,7 @@ export async function analyzeWallet(
 
     const soldAll = pos.totalSoldTokens >= pos.totalBoughtTokens * 0.9;
 
-    if (soldAll && fumbledUSD > 100) {
+    if (soldAll && fumbledUSD > 1) {
       trade.totalValueUSD = fumbledUSD;
       paperhanded.push(trade);
     } else if (soldAll && profitUSD > 0) {

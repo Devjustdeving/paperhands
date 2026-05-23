@@ -9,11 +9,9 @@ interface JupiterPriceResponse {
   >;
 }
 
-export async function getTokenPrices(
+async function getJupiterPrices(
   mints: string[]
 ): Promise<Record<string, number>> {
-  if (mints.length === 0) return {};
-
   const prices: Record<string, number> = {};
   const batchSize = 100;
 
@@ -40,6 +38,59 @@ export async function getTokenPrices(
   }
 
   return prices;
+}
+
+async function getDexScreenerPrices(
+  mints: string[]
+): Promise<Record<string, number>> {
+  const prices: Record<string, number> = {};
+  const batchSize = 30;
+
+  for (let i = 0; i < mints.length; i += batchSize) {
+    const batch = mints.slice(i, i + batchSize).join(",");
+    if (!batch) continue;
+
+    try {
+      const res = await fetch(
+        `https://api.dexscreener.com/tokens/v1/solana/${batch}`,
+        { next: { revalidate: 60 } }
+      );
+
+      if (res.ok) {
+        const data = await res.json();
+        const pairs = Array.isArray(data) ? data : data.pairs || [];
+        for (const pair of pairs) {
+          const addr = pair.baseToken?.address;
+          if (addr && !prices[addr] && pair.priceUsd) {
+            prices[addr] = parseFloat(pair.priceUsd);
+          }
+        }
+      }
+    } catch {
+      // continue
+    }
+  }
+
+  return prices;
+}
+
+export async function getTokenPrices(
+  mints: string[]
+): Promise<Record<string, number>> {
+  if (mints.length === 0) return {};
+
+  const [jupPrices, dexPrices] = await Promise.all([
+    getJupiterPrices(mints),
+    getDexScreenerPrices(mints),
+  ]);
+
+  const merged: Record<string, number> = {};
+  for (const mint of mints) {
+    const price = jupPrices[mint] || dexPrices[mint];
+    if (price) merged[mint] = price;
+  }
+
+  return merged;
 }
 
 export async function getSOLPrice(): Promise<number> {
