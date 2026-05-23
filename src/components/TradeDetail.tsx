@@ -2,7 +2,25 @@
 
 import { TokenTrade, AnalysisTab } from "@/lib/types";
 import { formatUSD, formatSOL, formatNumber } from "@/lib/utils";
-import { useState } from "react";
+import { useState, ReactNode } from "react";
+
+function SolLogo({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <img
+      src="https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png"
+      alt="SOL"
+      className={`${className} inline-block rounded-full`}
+    />
+  );
+}
+
+function SolAmount({ amount, className }: { amount: number; className?: string }) {
+  return (
+    <span className={`inline-flex items-center gap-1 ${className || ""}`}>
+      {formatSOL(amount)} <SolLogo className="w-4 h-4" />
+    </span>
+  );
+}
 
 interface TradeDetailProps {
   trade: TokenTrade;
@@ -53,13 +71,13 @@ export function TradeDetail({ trade, tab }: TradeDetailProps) {
       <div className="grid grid-cols-2 gap-3">
         <StatCard
           label="Bought with"
-          value={`${formatSOL(trade.boughtWithSOL)} ◎`}
+          value={<SolAmount amount={trade.boughtWithSOL} />}
           sub={formatUSD(trade.boughtWithUSD)}
         />
         {tab === "paperhand" || tab === "gained" ? (
           <StatCard
             label="Sold for"
-            value={`${formatSOL(trade.soldForSOL)} ◎`}
+            value={<SolAmount amount={trade.soldForSOL} />}
             sub={formatUSD(trade.soldForUSD)}
           />
         ) : (
@@ -71,20 +89,20 @@ export function TradeDetail({ trade, tab }: TradeDetailProps) {
         {tab === "paperhand" ? (
           <StatCard
             label="Fumbled"
-            value={`${formatSOL(trade.fumbledSOL)} ◎`}
+            value={<SolAmount amount={trade.fumbledSOL} />}
             sub={formatUSD(trade.fumbledUSD)}
             highlight
           />
         ) : tab === "roundtrip" ? (
           <StatCard
             label="Roundtripped"
-            value={`${formatSOL(trade.roundtrippedSOL || 0)} ◎`}
+            value={<SolAmount amount={trade.roundtrippedSOL || 0} />}
             sub={formatUSD(trade.roundtrippedUSD || 0)}
           />
         ) : (
           <StatCard
             label="Profit"
-            value={`${formatSOL(trade.soldForSOL - trade.boughtWithSOL)} ◎`}
+            value={<SolAmount amount={trade.soldForSOL - trade.boughtWithSOL} />}
             sub={formatUSD(trade.soldForUSD - trade.boughtWithUSD)}
             positive
           />
@@ -116,7 +134,7 @@ function StatCard({
   positive,
 }: {
   label: string;
-  value: string;
+  value: ReactNode;
   sub?: string;
   highlight?: boolean;
   positive?: boolean;
