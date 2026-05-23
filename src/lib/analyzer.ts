@@ -180,13 +180,22 @@ export async function analyzeWallet(
     const soldSOL = pos.totalSolReceived > 0 ? pos.totalSolReceived
       : solPrice > 0 ? soldUSD / solPrice : 0;
 
-    const allTimestamps = [
-      ...pos.buys.map((s) => s.timestamp),
-      ...pos.sells.map((s) => s.timestamp),
-    ];
-    const firstTimestamp = Math.min(...allTimestamps);
-    const lastTimestamp = Math.max(...allTimestamps);
-    const heldHours = Math.max(1, Math.round(Math.abs(lastTimestamp - firstTimestamp) / 3600));
+    const hasBuys = pos.buys.length > 0;
+    const hasSells = pos.sells.length > 0;
+    let heldSeconds = 0;
+
+    if (hasBuys && hasSells) {
+      heldSeconds = pos.lastSellTimestamp - pos.firstBuyTimestamp;
+    } else if (hasBuys) {
+      heldSeconds = (Date.now() / 1000) - pos.firstBuyTimestamp;
+    } else if (hasSells) {
+      const sellTimestamps = pos.sells.map((s) => s.timestamp);
+      const firstSell = Math.min(...sellTimestamps);
+      const lastSell = Math.max(...sellTimestamps);
+      heldSeconds = lastSell - firstSell;
+    }
+    heldSeconds = Math.abs(heldSeconds);
+    const heldHours = heldSeconds / 3600;
 
     const allTokenValueAtCurrentPrice = tokenCount * currentPrice;
     const fumbledUSD = Math.max(0, allTokenValueAtCurrentPrice - soldUSD);

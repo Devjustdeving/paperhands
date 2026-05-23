@@ -35,6 +35,22 @@ export function getScoreColor(score: number): string {
   return "text-green-400";
 }
 
+export function formatHeldTime(hours: number): string {
+  if (hours >= 720) {
+    const days = Math.round(hours / 24);
+    return `${days} Days`;
+  }
+  if (hours >= 24) {
+    const days = Math.floor(hours / 24);
+    const rem = Math.round(hours % 24);
+    return rem > 0 ? `${days}D ${rem}H` : `${days} Days`;
+  }
+  if (hours >= 1) return `${Math.round(hours)} Hours`;
+  const mins = Math.round(hours * 60);
+  if (mins > 0) return `${mins} Min`;
+  return "< 1 Min";
+}
+
 export function getScoreLabel(score: number): string {
   if (score >= 80) return "Legendary Jeeter";
   if (score >= 60) return "Advanced Jeeter";

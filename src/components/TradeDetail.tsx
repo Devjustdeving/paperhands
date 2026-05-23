@@ -1,7 +1,7 @@
 "use client";
 
 import { TokenTrade, AnalysisTab } from "@/lib/types";
-import { formatUSD, formatSOL, formatNumber } from "@/lib/utils";
+import { formatUSD, formatSOL, formatNumber, formatHeldTime } from "@/lib/utils";
 import { useState, ReactNode } from "react";
 
 function SolLogo({ className = "w-4 h-4" }: { className?: string }) {
@@ -110,7 +110,7 @@ export function TradeDetail({ trade, tab }: TradeDetailProps) {
         {tab === "roundtrip" ? (
           <StatCard label="Now worth" value={formatUSD(trade.nowWorth || 0)} />
         ) : (
-          <StatCard label="Held for" value={`${trade.heldForHours} Hours`} />
+          <StatCard label="Held for" value={formatHeldTime(trade.heldForHours)} />
         )}
       </div>
 
