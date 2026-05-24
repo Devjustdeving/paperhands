@@ -37,10 +37,17 @@ export async function GET(
       }
 
       return NextResponse.json(analysis);
-    } catch (error) {
-      console.error("EVM analysis error:", error);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : "Unknown error";
+      console.error("EVM analysis error:", msg);
+      if (msg.includes("Max rate limit")) {
+        return NextResponse.json(
+          { error: "Rate limited by " + chain + " API. Please wait a moment and try again." },
+          { status: 429 }
+        );
+      }
       return NextResponse.json(
-        { error: "Failed to analyze wallet. Please try again." },
+        { error: "Failed to analyze wallet on " + chain + ". Please try again." },
         { status: 500 }
       );
     }

@@ -55,12 +55,55 @@ async function getERC20Transfers(
     next: { revalidate: 300 },
   });
 
-  if (!res.ok) return [];
+  if (!res.ok) {
+    throw new Error(`${chain} API returned status ${res.status}`);
+  }
 
   const data = await res.json();
+
+  if (data.status === "0" && data.message === "No transactions found") {
+    return [];
+  }
+
+  if (data.status === "0" && typeof data.result === "string") {
+    throw new Error(data.result);
+  }
+
   if (data.status !== "1" || !Array.isArray(data.result)) return [];
 
   return data.result;
+}
+
+async function getTokenPrice(contractAddress: string): Promise<number> {
+  try {
+    const res = await fetch(
+      `https://api.dexscreener.com/latest/dex/tokens/${contractAddress}`,
+      { next: { revalidate: 300 } }
+    );
+    if (!res.ok) return 0;
+    const data = await res.json();
+    if (data.pairs && data.pairs.length > 0) {
+      return parseFloat(data.pairs[0].priceUsd || "0");
+    }
+    return 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function getNativePrice(symbol: string): Promise<number> {
+  try {
+    const id = symbol === "BNB" ? "binancecoin" : "ethereum";
+    const res = await fetch(
+      `https://api.coingecko.com/api/v3/simple/price?ids=${id}&vs_currencies=usd`,
+      { next: { revalidate: 300 } }
+    );
+    if (!res.ok) return symbol === "BNB" ? 600 : 3500;
+    const data = await res.json();
+    return data[id]?.usd || (symbol === "BNB" ? 600 : 3500);
+  } catch {
+    return symbol === "BNB" ? 600 : 3500;
+  }
 }
 
 interface TokenPosition {
@@ -112,11 +155,27 @@ export async function analyzeEVMWallet(
   }
 
   const config = CHAIN_CONFIG[chain];
+  const nativePrice = await getNativePrice(config.nativeSymbol);
   const paperhanded: TokenTrade[] = [];
   const roundtripped: TokenTrade[] = [];
   const gained: TokenTrade[] = [];
 
-  for (const [, pos] of positions) {
+  const contractAddresses = Array.from(positions.keys());
+  const prices: Record<string, number> = {};
+  const priceBatches = [];
+  for (let i = 0; i < contractAddresses.length; i += 30) {
+    priceBatches.push(contractAddresses.slice(i, i + 30));
+  }
+  await Promise.all(
+    priceBatches.map(async (batch) => {
+      for (const ca of batch) {
+        const pos = positions.get(ca)!;
+        prices[ca] = await getTokenPrice(pos.contractAddress);
+      }
+    })
+  );
+
+  for (const [ca, pos] of positions) {
     if (pos.inTxs.length === 0 || pos.outTxs.length === 0) continue;
     if (pos.totalIn < 0.001) continue;
 
@@ -125,12 +184,23 @@ export async function analyzeEVMWallet(
 
     const firstIn = Math.min(...pos.inTxs.map((t) => t.timestamp));
     const lastOut = Math.max(...pos.outTxs.map((t) => t.timestamp));
-    const heldHours = Math.round((lastOut - firstIn) / 3600);
+    const heldSeconds = Math.abs(lastOut - firstIn);
+    const heldHours = heldSeconds / 3600;
 
-    const estimatedBuyValue = pos.totalIn * 0.001 * config.nativePrice;
-    const estimatedSellValue = pos.totalOut * 0.0008 * config.nativePrice;
-    const estimatedCurrentValue = pos.totalIn * 0.002 * config.nativePrice;
-    const fumbled = Math.max(0, estimatedCurrentValue - estimatedSellValue);
+    const currentPrice = prices[ca] || 0;
+    const remainingTokens = pos.totalIn - pos.totalOut;
+    const currentValueOfAll = pos.totalIn * currentPrice;
+    const currentValueOfRemaining = Math.max(0, remainingTokens) * currentPrice;
+    const soldValueUSD = pos.totalOut * currentPrice;
+    const boughtValueUSD = pos.totalIn * currentPrice * 0.5;
+
+    const boughtNative = boughtValueUSD > 0 && nativePrice > 0 ? boughtValueUSD / nativePrice : 0;
+    const soldNative = soldValueUSD > 0 && nativePrice > 0 ? soldValueUSD / nativePrice : 0;
+    const fumbledUSD = Math.max(0, currentValueOfAll - soldValueUSD);
+    const fumbledNative = nativePrice > 0 ? fumbledUSD / nativePrice : 0;
+
+    const referenceUSD = soldValueUSD > 0 ? soldValueUSD : boughtValueUSD > 0 ? boughtValueUSD : 1;
+    const percentageGain = Math.max(0, Math.round(((currentValueOfAll / referenceUSD) - 1) * 100));
 
     const trade: TokenTrade = {
       token: {
@@ -140,28 +210,30 @@ export async function analyzeEVMWallet(
         contractAddress: pos.contractAddress,
         platform: chain,
       },
-      boughtWithSOL: estimatedBuyValue / config.nativePrice,
-      boughtWithUSD: estimatedBuyValue,
-      soldForSOL: estimatedSellValue / config.nativePrice,
-      soldForUSD: estimatedSellValue,
-      fumbledSOL: fumbled / config.nativePrice,
-      fumbledUSD: fumbled,
-      heldForHours: Math.abs(heldHours),
+      boughtWithSOL: boughtNative,
+      boughtWithUSD: boughtValueUSD,
+      soldForSOL: soldNative,
+      soldForUSD: soldValueUSD,
+      fumbledSOL: fumbledNative,
+      fumbledUSD: fumbledUSD,
+      heldForHours: heldHours,
       tokenAmount: pos.totalIn,
-      totalValueUSD: fumbled > 100 ? fumbled : estimatedSellValue - estimatedBuyValue,
-      percentageGain: estimatedBuyValue > 0
-        ? Math.round(((estimatedSellValue - estimatedBuyValue) / estimatedBuyValue) * 100)
-        : 0,
+      totalValueUSD: currentValueOfAll,
+      percentageGain,
     };
 
-    if (fumbled > 100) {
+    const soldAll = pos.totalOut >= pos.totalIn * 0.9;
+
+    if (soldAll && fumbledUSD > 1) {
+      trade.totalValueUSD = fumbledUSD;
       paperhanded.push(trade);
-    } else if (estimatedSellValue > estimatedBuyValue) {
+    } else if (soldAll && soldValueUSD > boughtValueUSD) {
+      trade.totalValueUSD = soldValueUSD - boughtValueUSD;
       gained.push(trade);
-    } else {
-      trade.roundtrippedSOL = trade.soldForSOL;
-      trade.roundtrippedUSD = trade.soldForUSD;
-      trade.nowWorth = 0;
+    } else if (soldAll) {
+      trade.roundtrippedSOL = soldNative;
+      trade.roundtrippedUSD = soldValueUSD;
+      trade.nowWorth = currentValueOfRemaining;
       roundtripped.push(trade);
     }
   }
