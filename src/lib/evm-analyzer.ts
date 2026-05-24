@@ -14,22 +14,16 @@ interface EtherscanTx {
 
 const CHAIN_CONFIG = {
   ethereum: {
-    apiBase: "https://api.etherscan.io/api",
+    chainId: 1,
     nativeSymbol: "ETH",
-    nativePrice: 3500,
-    scanApiKey: "", // uses free tier
   },
   base: {
-    apiBase: "https://api.basescan.org/api",
+    chainId: 8453,
     nativeSymbol: "ETH",
-    nativePrice: 3500,
-    scanApiKey: "",
   },
   bsc: {
-    apiBase: "https://api.bscscan.com/api",
+    chainId: 56,
     nativeSymbol: "BNB",
-    nativePrice: 600,
-    scanApiKey: "",
   },
 };
 
@@ -40,6 +34,7 @@ async function getERC20Transfers(
 ): Promise<EtherscanTx[]> {
   const config = CHAIN_CONFIG[chain];
   const params = new URLSearchParams({
+    chainid: String(config.chainId),
     module: "account",
     action: "tokentx",
     address,
@@ -51,7 +46,7 @@ async function getERC20Transfers(
   });
   if (apiKey) params.set("apikey", apiKey);
 
-  const res = await fetch(`${config.apiBase}?${params}`, {
+  const res = await fetch(`https://api.etherscan.io/v2/api?${params}`, {
     next: { revalidate: 300 },
   });
 

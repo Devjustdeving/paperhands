@@ -13,11 +13,7 @@ export async function GET(
 
   if (chain === "ethereum" || chain === "base" || chain === "bsc") {
     try {
-      const apiKey = chain === "ethereum"
-        ? process.env.ETHERSCAN_API_KEY
-        : chain === "base"
-        ? process.env.BASESCAN_API_KEY
-        : process.env.BSCSCAN_API_KEY;
+      const apiKey = process.env.ETHERSCAN_API_KEY;
 
       const analysis = await analyzeEVMWallet(
         address,
