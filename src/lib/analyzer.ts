@@ -204,8 +204,19 @@ export async function analyzeWallet(
     const profitSOL = soldSOL - boughtSOL;
     const profitUSD = soldUSD - boughtUSD;
 
-    const referenceUSD = soldUSD > 0 ? soldUSD : boughtUSD > 0 ? boughtUSD : 1;
-    const percentageGain = Math.max(0, Math.round(((allTokenValueAtCurrentPrice / referenceUSD) - 1) * 100));
+    const paperhandPct = boughtUSD > 0
+      ? Math.max(0, Math.round(((allTokenValueAtCurrentPrice / boughtUSD) - 1) * 100))
+      : soldUSD > 0
+      ? Math.max(0, Math.round(((allTokenValueAtCurrentPrice / soldUSD) - 1) * 100))
+      : 0;
+
+    const gainedPct = boughtUSD > 0
+      ? Math.max(0, Math.round(((soldUSD - boughtUSD) / boughtUSD) * 100))
+      : 0;
+
+    const roundtripPct = boughtUSD > 0
+      ? Math.abs(Math.round(((soldUSD - boughtUSD) / boughtUSD) * 100))
+      : 0;
 
     const trade: TokenTrade = {
       token: {
@@ -224,21 +235,24 @@ export async function analyzeWallet(
       heldForHours: heldHours,
       tokenAmount: tokenCount,
       totalValueUSD: allTokenValueAtCurrentPrice,
-      percentageGain,
+      percentageGain: paperhandPct,
     };
 
     const soldAll = pos.totalSoldTokens >= pos.totalBoughtTokens * 0.9;
 
     if (soldAll && fumbledUSD > 1) {
       trade.totalValueUSD = fumbledUSD;
+      trade.percentageGain = paperhandPct;
       paperhanded.push(trade);
     } else if (soldAll && profitUSD > 0) {
       trade.totalValueUSD = profitUSD;
+      trade.percentageGain = gainedPct;
       trade.roundtrippedSOL = profitSOL;
       trade.roundtrippedUSD = profitUSD;
       trade.nowWorth = currentValueOfRemaining;
       gained.push(trade);
     } else if (soldAll) {
+      trade.percentageGain = roundtripPct;
       trade.roundtrippedSOL = pos.totalSolReceived;
       trade.roundtrippedUSD = soldUSD;
       trade.nowWorth = currentValueOfRemaining;
