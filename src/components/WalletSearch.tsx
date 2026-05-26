@@ -3,11 +3,22 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Chain } from "@/lib/types";
+import { ReactNode } from "react";
 
-const CHAINS: { id: Chain; name: string; icon: string }[] = [
-  { id: "solana", name: "Solana", icon: "◎" },
-  { id: "ethereum", name: "Ethereum", icon: "Ξ" },
-  { id: "base", name: "Base", icon: "🔵" },
+function SolanaIcon() {
+  return (
+    <img
+      src="https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png"
+      alt="SOL"
+      className="w-4 h-4 inline-block rounded-full"
+    />
+  );
+}
+
+const CHAINS: { id: Chain; name: string; icon: ReactNode }[] = [
+  { id: "solana", name: "Solana", icon: <SolanaIcon /> },
+  { id: "ethereum", name: "Ethereum", icon: <span>Ξ</span> },
+  { id: "base", name: "Base", icon: <span>🔵</span> },
 ];
 
 export function WalletSearch() {
@@ -36,7 +47,7 @@ export function WalletSearch() {
                 : "bg-card text-muted border border-border hover:border-muted"
             }`}
           >
-            {c.icon} {c.name}
+            <span className="inline-flex items-center gap-1.5">{c.icon} {c.name}</span>
           </button>
         ))}
       </div>
