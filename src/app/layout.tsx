@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import { Navbar } from "@/components/Navbar";
 
@@ -18,6 +19,15 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${inter.variable} ${jetbrains.variable} dark`}>
+      <head>
+        <Script async src="https://www.googletagmanager.com/gtag/js?id=G-1C0FV92YFX" strategy="afterInteractive" />
+        <Script id="gtag-init" strategy="afterInteractive">
+          {`window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'G-1C0FV92YFX');`}
+        </Script>
+      </head>
       <body className="min-h-screen bg-background text-foreground">
         <Navbar />
         <main className="max-w-5xl mx-auto px-4 pb-20">{children}</main>
