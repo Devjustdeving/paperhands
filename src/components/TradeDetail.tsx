@@ -114,14 +114,6 @@ export function TradeDetail({ trade, tab }: TradeDetailProps) {
         )}
       </div>
 
-      <div className="flex gap-3 mt-6">
-        <button className="flex-1 py-3 rounded-xl bg-card border border-border text-sm font-medium text-muted hover:text-foreground hover:border-muted transition-all flex items-center justify-center gap-2">
-          📊 Chart
-        </button>
-        <button className="flex-1 py-3 rounded-xl bg-accent/10 border border-accent/30 text-sm font-medium text-accent hover:bg-accent/20 transition-all flex items-center justify-center gap-2">
-          🔗 Share
-        </button>
-      </div>
     </div>
   );
 }

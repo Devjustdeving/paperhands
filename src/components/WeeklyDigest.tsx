@@ -148,7 +148,7 @@ export function WeeklyDigest({ analysis }: WeeklyDigestProps) {
               onClick={handleShareTwitter}
               className="flex-1 py-3 rounded-xl bg-[#1d9bf0]/10 border border-[#1d9bf0]/30 text-sm font-medium text-[#1d9bf0] hover:bg-[#1d9bf0]/20 transition-all flex items-center justify-center gap-2"
             >
-              𝕏 Share on Twitter
+              Share on 𝕏
             </button>
             <button
               onClick={handleShare}
