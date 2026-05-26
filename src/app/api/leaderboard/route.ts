@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getLeaderboard } from "@/lib/storage";
-import { getMockLeaderboard } from "@/lib/mock-data";
 
 export async function GET(request: NextRequest) {
   const limit = parseInt(request.nextUrl.searchParams.get("limit") || "20");
@@ -8,23 +7,15 @@ export async function GET(request: NextRequest) {
 
   const { entries, total } = await getLeaderboard(limit, offset);
 
-  if (entries.length > 0) {
-    const formatted = entries.map((entry, i) => ({
-      rank: offset + i + 1,
-      walletAddress: entry.address,
-      paperhandedValueSOL: entry.totalFumbledSOL,
-      paperhandedValueUSD: entry.totalFumbledUSD,
-      paperhandScore: entry.paperhandScore,
-      chain: entry.chain,
-      tradeCount: entry.paperhanded + entry.roundtripped + entry.gained,
-    }));
+  const formatted = entries.map((entry, i) => ({
+    rank: offset + i + 1,
+    walletAddress: entry.address,
+    paperhandedValueSOL: entry.totalFumbledSOL,
+    paperhandedValueUSD: entry.totalFumbledUSD,
+    paperhandScore: entry.paperhandScore,
+    chain: entry.chain,
+    tradeCount: entry.paperhanded + entry.roundtripped + entry.gained,
+  }));
 
-    return NextResponse.json({ entries: formatted, total });
-  }
-
-  const mock = getMockLeaderboard();
-  return NextResponse.json({
-    entries: mock.slice(offset, offset + limit),
-    total: mock.length,
-  });
+  return NextResponse.json({ entries: formatted, total });
 }
