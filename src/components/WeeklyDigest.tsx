@@ -28,7 +28,7 @@ export function WeeklyDigest({ analysis }: WeeklyDigestProps) {
       `Total Gained: ${formatUSD(analysis.totalGainedUSD)}\n` +
       `Tokens Jeeted: ${analysis.paperhanded.length}\n` +
       `Biggest Fumble: ${analysis.paperhanded[0]?.token.name || "N/A"} - ${formatUSD(analysis.paperhanded[0]?.fumbledUSD || 0)}\n\n` +
-      `Check yours at paperhands.app`;
+      `Check yours at paperhands.club`;
 
     if (navigator.share) {
       navigator.share({ title: "My Paperhand Report", text });
@@ -138,7 +138,7 @@ export function WeeklyDigest({ analysis }: WeeklyDigestProps) {
 
             <div className="text-center pt-2">
               <p className="text-[10px] text-muted">
-                paperhands.app
+                paperhands.club
               </p>
             </div>
           </div>

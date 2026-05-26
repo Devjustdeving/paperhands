@@ -1,9 +1,11 @@
+import Image from "next/image";
 import { WalletSearch } from "@/components/WalletSearch";
 
 export default function Home() {
   return (
     <div className="flex flex-col items-center justify-center min-h-[80vh] gap-8">
       <div className="text-center space-y-4 animate-fade-in">
+        <Image src="/logo.png" alt="PaperHands Club" width={120} height={120} className="mx-auto rounded-2xl" />
         <h1 className="text-5xl md:text-7xl font-bold">
           <span className="text-accent">Paper</span>Hands
         </h1>

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 
 export function Navbar() {
@@ -10,7 +11,7 @@ export function Navbar() {
     <nav className="border-b border-border sticky top-0 bg-background/80 backdrop-blur-md z-50">
       <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2 group">
-          <span className="text-2xl font-bold text-accent">Ph</span>
+          <Image src="/logo.png" alt="PaperHands Club" width={40} height={40} className="rounded-lg" />
           <div className="leading-tight">
             <span className="text-sm font-bold text-foreground group-hover:text-accent transition-colors">
               paperhands
