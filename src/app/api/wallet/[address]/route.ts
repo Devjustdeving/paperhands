@@ -3,6 +3,7 @@ import { getWalletTransactions, parseSwaps } from "@/lib/helius";
 import { analyzeWallet } from "@/lib/analyzer";
 import { analyzeEVMWallet } from "@/lib/evm-analyzer";
 import { getMockWalletAnalysis } from "@/lib/mock-data";
+import { saveWalletAnalysis } from "@/lib/storage";
 
 export async function GET(
   request: NextRequest,
@@ -32,6 +33,7 @@ export async function GET(
         );
       }
 
+      saveWalletAnalysis(analysis).catch(() => {});
       return NextResponse.json(analysis);
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : "Unknown error";
@@ -68,6 +70,7 @@ export async function GET(
     const swaps = parseSwaps(transactions, address);
     const analysis = await analyzeWallet(swaps, address);
 
+    saveWalletAnalysis(analysis).catch(() => {});
     return NextResponse.json(analysis);
   } catch (error) {
     console.error("Wallet analysis error:", error);
