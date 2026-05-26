@@ -5,6 +5,16 @@ import { getMockLeaderboard } from "@/lib/mock-data";
 import { formatSOL, formatUSD } from "@/lib/utils";
 import Link from "next/link";
 
+function SolLogo() {
+  return (
+    <img
+      src="https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png"
+      alt="SOL"
+      className="w-4 h-4 inline-block rounded-full"
+    />
+  );
+}
+
 const PAGE_SIZE = 10;
 
 export default function LeaderboardPage() {
@@ -53,7 +63,7 @@ export default function LeaderboardPage() {
               </span>
               <span className="font-mono text-sm">{entry.walletAddress}</span>
               <span className="text-right">
-                <span className="font-semibold">{formatSOL(entry.paperhandedValueSOL)} ◎</span>
+                <span className="font-semibold inline-flex items-center gap-1 justify-end">{formatSOL(entry.paperhandedValueSOL)} <SolLogo /></span>
                 <span className="text-muted ml-2 text-sm">({formatUSD(entry.paperhandedValueUSD)})</span>
               </span>
             </Link>
