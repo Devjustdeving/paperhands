@@ -24,9 +24,7 @@ export default function RootLayout({
         <footer className="border-t border-border py-6 text-center text-muted text-sm">
           <p>Powered by PaperHands Club</p>
           <div className="flex justify-center gap-4 mt-3">
-            <span className="hover:text-foreground cursor-pointer transition-colors">𝕏</span>
-            <span className="hover:text-foreground cursor-pointer transition-colors">Telegram</span>
-            <span className="hover:text-foreground cursor-pointer transition-colors">Discord</span>
+            <a href="https://x.com/PHdotClub" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">𝕏</a>
           </div>
         </footer>
       </body>
