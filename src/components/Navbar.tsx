@@ -13,8 +13,8 @@ export function Navbar() {
         <Link href="/" className="flex items-center gap-2 group">
           <Image src="/logo.png" alt="PaperHands Club" width={40} height={40} className="rounded-lg" />
           <div className="leading-tight">
-            <span className="text-sm font-bold text-foreground group-hover:text-accent transition-colors">
-              paperhands
+            <span className="text-sm font-bold transition-colors">
+              <span className="text-accent">Paper</span><span className="text-foreground group-hover:text-accent">Hands</span>
             </span>
             <span className="text-[10px] ml-1 px-1.5 py-0.5 bg-accent/20 text-accent rounded-full font-medium">
               BETA
